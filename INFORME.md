@@ -1,5 +1,5 @@
 # Informe Tarea 0: Instalación xv6
-
+Alfredo Hernández
 ## Pasos Seguidos
 
 1. Clonación del repositorio: Se clonó mi fork desde GitHub
