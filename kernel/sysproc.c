@@ -105,3 +105,34 @@ sys_uptime(void)
   release(&tickslock);
   return xticks;
 }
+
+uint64
+sys_getppid(void) // Implementacion de la syscall getppid
+{
+  return myproc()->parent->pid;
+}
+
+uint64
+sys_getancestor(void) // Implementacion de la syscall getancestor
+{
+  int n;
+  struct proc *p;
+
+  // Obtener el parametro n
+  argint(0, &n);
+
+  // Verificar que n sea valido (0 o mayor)
+  if(n < 0)
+    return -1;
+
+  p = myproc();
+
+  // Recorrer la cadena de padres n veces
+  for(int i = 0; i < n; i++) {
+    if(p->parent == 0) {  // Si no hay padre, retornar -1
+      return -1;
+    }
+    p = p->parent;
+  }
+  return p->pid;  // Retornar el PID del ancestro n niveles arriba
+}

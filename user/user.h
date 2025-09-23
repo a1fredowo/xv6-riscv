@@ -21,6 +21,8 @@ int mkdir(const char*);
 int chdir(const char*);
 int dup(int);
 int getpid(void);
+int getppid(void); // Se agrega la declaracion de getppid
+int getancestor(int); // Se agrega la declaracion de getancestor
 char* sys_sbrk(int,int);
 int pause(int);
 int uptime(void);

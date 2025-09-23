@@ -39,6 +39,8 @@ entry("mkdir");
 entry("chdir");
 entry("dup");
 entry("getpid");
+entry("getppid"); # Se agrega la entrada para getppid
+entry("getancestor"); # Se agrega la entrada para getancestor
 entry("sbrk");
 entry("pause");
 entry("uptime");
