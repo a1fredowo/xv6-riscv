@@ -1,7 +1,7 @@
 # Informe - Tarea 1: Implementación de Llamadas al Sistema en xv6
-Grupo K:
-Alfredo Hernández
-Ignacio Hernández
+Grupo K:  
+Alfredo Hernández  
+Ignacio Hernández  
 
 ## Introducción
 
