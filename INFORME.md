@@ -162,7 +162,9 @@ int getancestor(int);  // Correcto
 
 ## Resultados de las Pruebas
 
-Las pruebas ejecutadas demuestran el funcionamiento correcto de ambas implementaciones (se pueden ver también en la imagen adjuntada en WebC):
+Las pruebas ejecutadas demuestran el funcionamiento correcto de ambas implementaciones (se pueden ver también en la imagen adjuntada):
+
+![Pruebas hechas](./captura_t1.png)
 
 ```
 $ yosoytupadre
