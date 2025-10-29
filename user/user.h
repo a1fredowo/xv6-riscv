@@ -26,6 +26,7 @@ int getancestor(int); // Se agrega la declaracion de getancestor
 char* sys_sbrk(int,int);
 int pause(int);
 int uptime(void);
+int settickets(int);
 
 // ulib.c
 int stat(const char*, struct stat*);

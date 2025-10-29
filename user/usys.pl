@@ -44,3 +44,4 @@ entry("getancestor"); # Se agrega la entrada para getancestor
 entry("sbrk");
 entry("pause");
 entry("uptime");
+entry("settickets");

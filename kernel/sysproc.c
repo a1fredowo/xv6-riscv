@@ -136,3 +136,17 @@ sys_getancestor(void) // Implementacion de la syscall getancestor
   }
   return p->pid;  // Retornar el PID del ancestro n niveles arriba
 }
+
+uint64
+sys_settickets(void)
+{
+  int n;
+  
+  argint(0, &n);
+  
+  if(n < 1)
+    n = 1;  // Minimum 1 ticket
+  
+  myproc()->tickets = n;
+  return 0;
+}
