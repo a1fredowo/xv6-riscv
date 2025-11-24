@@ -104,6 +104,8 @@ extern uint64 sys_close(void);
 extern uint64 sys_getppid(void); // Se agrega la declaracion de la funcion que maneja la syscall getppid
 extern uint64 sys_getancestor(void); // Se agrega la declaracion de la funcion que maneja la syscall getancestor
 extern uint64 sys_settickets(void);
+extern uint64 sys_mrdprotect(void);
+extern uint64 sys_munrdprotect(void);
 
 // An array mapping syscall numbers from syscall.h
 // to the function that handles the system call.
@@ -132,6 +134,8 @@ static uint64 (*syscalls[])(void) = {
 [SYS_getppid] sys_getppid, // Se agrega la entrada para getppid
 [SYS_getancestor] sys_getancestor, // Se agrega la entrada para getancestor
 [SYS_settickets] sys_settickets,
+[SYS_mrdprotect]   sys_mrdprotect,
+[SYS_munrdprotect] sys_munrdprotect,
 };
 
 void

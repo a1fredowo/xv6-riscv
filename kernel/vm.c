@@ -484,3 +484,60 @@ ismapped(pagetable_t pagetable, uint64 va)
   }
   return 0;
 }
+
+
+// Remove read permission from pages
+int
+mrdprotect(pagetable_t pagetable, uint64 va, uint64 len)
+{
+  uint64 a;
+  pte_t *pte;
+
+  if(len <= 0)
+    return -1;
+
+  a = PGROUNDDOWN(va);
+  
+  for(; a < va + len; a += PGSIZE){
+    if((pte = walk(pagetable, a, 0)) == 0)
+      return -1;
+    if((*pte & PTE_V) == 0)
+      return -1;
+    
+    // Marcar protegida y quitar SOLO lectura
+    *pte |= PTE_RDPROTECT;
+    *pte &= ~PTE_R;  // Quitar lectura, mantener W y V
+  }
+  
+  sfence_vma();
+  return 0;
+}
+
+// Restore read permission to pages
+int
+munrdprotect(pagetable_t pagetable, uint64 va, uint64 len)
+{
+  uint64 a;
+  pte_t *pte;
+
+  if(len <= 0)
+    return -1;
+
+  a = PGROUNDDOWN(va);
+  
+  for(; a < va + len; a += PGSIZE){
+    if((pte = walk(pagetable, a, 0)) == 0)
+      return -1;
+    if((*pte & PTE_V) == 0)
+      return -1;
+    
+    // Restaurar permisos si estaba protegida
+    if(*pte & PTE_RDPROTECT) {
+      *pte &= ~PTE_RDPROTECT;              // Quitar marca de protección
+      *pte |= (PTE_R | PTE_W | PTE_U);     // Restaurar permisos
+    }
+  }
+  
+  sfence_vma();
+  return 0;
+}

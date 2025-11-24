@@ -20,6 +20,8 @@
 #define SYS_link   19
 #define SYS_mkdir  20
 #define SYS_close  21
-#define SYS_getppid 22 // Se agrega la definicion del numero de syscall para getppid
-#define SYS_getancestor 23 // Se agrega la definicion del numero de syscall para getancestor
-#define SYS_settickets 22
+#define SYS_getppid 22       // De T1
+#define SYS_getancestor 23   // De T1
+#define SYS_settickets 24    // De T2 
+#define SYS_mrdprotect 25    // De T3 
+#define SYS_munrdprotect 26  // De T3 

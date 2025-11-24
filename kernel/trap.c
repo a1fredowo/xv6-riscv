@@ -68,9 +68,31 @@ usertrap(void)
     syscall();
   } else if((which_dev = devintr()) != 0){
     // ok
-  } else if((r_scause() == 15 || r_scause() == 13) &&
-            vmfault(p->pagetable, r_stval(), (r_scause() == 13)? 1 : 0) != 0) {
-    // page fault on lazily-allocated page
+  } else if(r_scause() == 13 || r_scause() == 15) {
+    // Page fault: 13 = Load, 15 = Store
+    uint64 va = r_stval();
+    pte_t *pte;
+    
+    // Primero verificar si es página protegida de lectura
+    if((pte = walk(p->pagetable, va, 0)) != 0 && (*pte & PTE_RDPROTECT)) {
+      if(r_scause() == 15) {
+        // Store (escritura) - Permitir dando R+W
+        *pte |= (PTE_R | PTE_W);
+        sfence_vma();
+        // Nota: Esto deja la página legible después de la escritura (limitación de RISC-V)
+      } else {
+        // Load (lectura) - DENEGAR
+        printf("usertrap(): intento de lectura en página protegida pid=%d\n", p->pid);
+        printf("            sepc=0x%lx stval=0x%lx\n", r_sepc(), r_stval());
+        setkilled(p);
+      }
+    } else if(vmfault(p->pagetable, va, (r_scause() == 13)? 1 : 0) != 0) {
+      // No es página protegida, intentar lazy allocation
+      // Si falla, es page fault normal
+      printf("usertrap(): page fault pid=%d\n", p->pid);
+      printf("            sepc=0x%lx stval=0x%lx\n", r_sepc(), r_stval());
+      setkilled(p);
+    }
   } else {
     printf("usertrap(): unexpected scause 0x%lx pid=%d\n", r_scause(), p->pid);
     printf("            sepc=0x%lx stval=0x%lx\n", r_sepc(), r_stval());

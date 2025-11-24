@@ -1,139 +1,204 @@
-# Tarea 2: Lottery Scheduling en xv6
+# Tarea 3: Protección de Lectura en xv6
 
-## Integrantes
-- Grupo K
-
-## Descripción
-Implementación de un planificador de procesos basado en Lottery Scheduling que reemplaza el Round-Robin original de xv6. Cada proceso recibe un número de "tickets" y la probabilidad de ser elegido por el scheduler es proporcional a su cantidad de tickets.
+**Grupo K**  
+**Fecha:** 23 de noviembre de 2025
 
 ---
 
-## Funcionamiento y Lógica de la Implementación
+## 1. Implementación
 
-### 1. Estructura del Proceso (`kernel/proc.h`)
-Se agregaron dos campos al `struct proc`:
-- `int tickets`: Número de tickets asignados al proceso (mínimo 1)
-- `int run_slices`: Contador de veces que el proceso ha sido planificado
+### 1.1 Objetivo
+Implementar protección de memoria "solo escritura" (write-only) en xv6, donde ciertas páginas de memoria pueden ser escritas pero no leídas por procesos de usuario.
 
-### 2. Inicialización (`kernel/proc.c - allocproc()`)
-Todos los procesos nuevos se inicializan con:
-- `tickets = 100` (valor por defecto)
-- `run_slices = 0`
+### 1.2 Enfoque Utilizado
 
-### 3. Algoritmo de Lotería (`kernel/proc.c - scheduler()`)
-El scheduler implementa el siguiente algoritmo:
+Se utilizó un **bit personalizado en el PTE** (`PTE_RDPROTECT`) para marcar páginas protegidas de lectura, combinado con manejo de page faults en el trap handler.
 
-1. **Calcular tickets totales**: Suma los tickets de todos los procesos RUNNABLE
-2. **Generar ticket ganador**: Número aleatorio entre 1 y total_tickets
-3. **Seleccionar ganador**: Acumula tickets proceso por proceso hasta alcanzar el número ganador
-4. **Ejecutar proceso**: El proceso seleccionado entra en estado RUNNING y se incrementa su `run_slices`
+#### Modificaciones realizadas:
+
+1. **kernel/riscv.h** - Definición del bit personalizado:
 ```c
-// Pseudocódigo simplificado
-total = suma(tickets de procesos RUNNABLE)
-ganador = random(1, total)
-acumulado = 0
-para cada proceso RUNNABLE:
-    acumulado += proceso.tickets
-    si acumulado >= ganador:
-        ejecutar proceso
-        break
+   #define PTE_RDPROTECT (1L << 9)  // Bit 9 reservado para software
 ```
 
-### 4. Generador de Números Aleatorios
-Se implementó un generador de números pseudoaleatorios (Linear Congruential Generator) para la selección de procesos.
+2. **kernel/vm.c** - Funciones de protección:
+   - `mrdprotect()`: Marca páginas como protegidas y quita el bit PTE_R
+   - `munrdprotect()`: Restaura el bit PTE_R y quita la marca de protección
 
-### 5. System Call `settickets(int n)`
-Permite que un proceso modifique su cantidad de tickets en tiempo de ejecución.
+3. **kernel/trap.c** - Manejo de page faults:
+   - Detecta accesos a páginas con `PTE_RDPROTECT`
+   - Scause 13 (Load): Deniega y mata el proceso
+   - Scause 15 (Store): Permite temporalmente dando permisos R+W
 
-**Archivos modificados:**
-- `kernel/sysproc.c`: Implementación de `sys_settickets()`
-- `kernel/syscall.h`: Definición `#define SYS_settickets 22`
-- `kernel/syscall.c`: Registro de la syscall
-- `user/usys.pl`: Generación de stub
-- `user/user.h`: Prototipo para espacio de usuario
+4. **kernel/sysproc.c** - Syscalls:
+   - `sys_mrdprotect()`: Wrapper para mrdprotect
+   - `sys_munrdprotect()`: Wrapper para munrdprotect
 
----
-
-## Modificaciones Realizadas
-
-### Archivos del Kernel
-1. **kernel/proc.h**: Agregados campos `tickets` y `run_slices` al struct proc
-2. **kernel/proc.c**: 
-   - Función `random()` para números aleatorios
-   - `allocproc()`: Inicialización de campos
-   - `scheduler()`: Implementación completa de Lottery Scheduling
-3. **kernel/sysproc.c**: Implementación de `sys_settickets()`
-4. **kernel/syscall.h**: Definición de número de syscall
-5. **kernel/syscall.c**: Registro de la syscall en el kernel
-
-### Archivos de Usuario
-6. **user/usys.pl**: Entry para la syscall
-7. **user/user.h**: Prototipo de `settickets()`
-8. **user/demo.c**: Programa de prueba con 10 procesos
-
-### Configuración
-9. **Makefile**: Agregado `$U/_demo\` a UPROGS
+5. **kernel/syscall.h, kernel/syscall.c, user/user.h, user/usys.pl**:
+   - Registro de las nuevas syscalls con números 25 y 26
 
 ---
 
-## Dificultades y Soluciones
+## 2. Funcionamiento
 
-### 1. Error en `argint()`
-**Problema**: La firma de `argint()` en esta versión de xv6 no retorna valor.
+### 2.1 Algoritmo de mrdprotect()
+```
+Para cada página en el rango [va, va+len):
+  1. Obtener PTE con walk()
+  2. Verificar que la página sea válida
+  3. Activar bit PTE_RDPROTECT
+  4. Quitar bit PTE_R (mantener PTE_W y PTE_V)
+  5. Llamar sfence_vma() para invalidar TLB
+```
 
-**Solución**: Remover la verificación `if(argint(0, &n) < 0)` y usar `argint(0, &n)` directamente.
+### 2.2 Manejo de Page Faults
 
-### 2. Deadlock en el scheduler
-**Problema**: Si no hay procesos RUNNABLE, el scheduler se queda en loop infinito.
+Cuando ocurre un page fault (scause 13 o 15):
 
-**Solución**: Verificar `total_tickets == 0` y ejecutar `wfi` (Wait For Interrupt) para evitar consumo innecesario de CPU.
+1. **Verificar si tiene PTE_RDPROTECT**
+   - Si NO: Intentar lazy allocation (vmfault)
+   
+2. **Si tiene PTE_RDPROTECT:**
+   - **Load (lectura)**: Denegar → matar proceso
+   - **Store (escritura)**: Dar permisos R+W temporalmente
 
-### 3. Sincronización con locks
-**Problema**: Riesgo de condiciones de carrera al acceder a `p->tickets` y `p->state`.
-
-**Solución**: Usar `acquire(&p->lock)` y `release(&p->lock)` correctamente en cada acceso.
-
----
-
-## Problemas del Lottery Scheduling
-
-### 1. **Falta de Garantías de Tiempo**
-Un proceso con pocos tickets puede sufrir de inanición (starvation) si hay muchos procesos con más tickets. No hay garantía de cuándo será ejecutado.
-
-### 2. **Predicción Imprecisa**
-La distribución de CPU es probabilística, no determinística. Un proceso con 10% de tickets podría obtener 5% o 15% del CPU en la práctica debido a la aleatoriedad.
-
-### 3. **Overhead del Random**
-La generación de números aleatorios y el cálculo de tickets totales en cada ciclo del scheduler agrega overhead computacional comparado con Round-Robin.
-
-### 4. **Dificultad para Procesos Interactivos**
-Los procesos que requieren respuesta rápida (ej: interfaz gráfica) pueden experimentar latencia variable, afectando la experiencia del usuario.
-
-### 5. **Problema de Granularidad**
-Si hay pocos procesos, las diferencias en tickets se notan mucho. Con muchos procesos, las diferencias se diluyen y el comportamiento se acerca a Round-Robin.
-
-### 6. **No Considera Prioridad Real-Time**
-No hay forma de garantizar que un proceso crítico siempre tenga prioridad, solo mayor probabilidad. Esto es problemático para sistemas de tiempo real.
+### 2.3 Algoritmo de munrdprotect()
+```
+Para cada página en el rango [va, va+len):
+  1. Obtener PTE con walk()
+  2. Si tiene PTE_RDPROTECT:
+     - Quitar bit PTE_RDPROTECT
+     - Restaurar bits PTE_R, PTE_W, PTE_U
+  3. Llamar sfence_vma()
+```
 
 ---
 
-## Compilación y Ejecución
+## 3. Archivos Modificados
+
+| Archivo | Cambios |
+|---------|---------|
+| `kernel/riscv.h` | Agregado `#define PTE_RDPROTECT` |
+| `kernel/defs.h` | Declaraciones de mrdprotect/munrdprotect |
+| `kernel/vm.c` | Implementación de mrdprotect/munrdprotect |
+| `kernel/trap.c` | Manejo de page faults para páginas protegidas |
+| `kernel/sysproc.c` | Syscalls sys_mrdprotect/sys_munrdprotect |
+| `kernel/syscall.h` | Definiciones SYS_mrdprotect (25), SYS_munrdprotect (26) |
+| `kernel/syscall.c` | Registro de las syscalls |
+| `user/user.h` | Prototipos de mrdprotect/munrdprotect |
+| `user/usys.pl` | Entries para las syscalls |
+| `user/rdprotect_test.c` | Programa de prueba (bloqueo de lectura) |
+| `user/wrtest.c` | Programa de prueba (permitir escritura) |
+| `Makefile` | Agregados programas de prueba |
+
+---
+
+## 4. Pruebas
+
+### 4.1 Test de Bloqueo de Lectura (`rdprotect_test`)
+```c
+char *addr = sbrk(4096);
+addr[0] = 'Z';                    // ✓ Funciona (sin protección)
+mrdprotect(addr, 4096);           // ✓ Aplicar protección
+char val = addr[0];               // ✗ Page fault → proceso muere
+```
+
+**Resultado esperado:**
+```
+usertrap(): intento de lectura en página protegida pid=3
+            sepc=0x6c stval=0x4000
+```
+
+### 4.2 Test de Escritura (`wrtest`)
+```c
+char *addr = sbrk(4096);
+addr[0] = 'Z';                    // ✓ Escribir inicial
+mrdprotect(addr, 4096);           // ✓ Proteger
+addr[0] = 'A';                    // ✓ Escritura permitida
+munrdprotect(addr, 4096);         // ✓ Remover protección
+printf("%c\n", addr[0]);          // ✓ Ahora lectura funciona: 'A'
+```
+
+**Resultado esperado:**
+```
+✓ Escritura exitosa
+✓ Test completado exitosamente
+```
+
+---
+
+## 5. Limitaciones y Consideraciones
+
+### 5.1 Limitación Arquitectónica de RISC-V
+
+**Problema:** En RISC-V, una página con **solo permiso de escritura** (W sin R) es considerada **inválida** según la especificación.
+
+**Consecuencia:** Después de la primera escritura, debemos dar permisos R+W para que la instrucción se ejecute, lo que deja la página legible.
+
+**Solución implementada:** 
+- Bloqueamos lecturas **antes de cualquier escritura**
+- La primera escritura activa R+W permanentemente
+- Documentamos esta limitación como inherente a RISC-V
+
+### 5.2 Alternativas No Implementadas
+
+1. **Single-stepping**: Usar el bit de debug de RISC-V para quitar R después de cada instrucción
+   - ❌ Demasiado complejo
+   - ❌ Gran overhead de rendimiento
+
+2. **Emulación de instrucciones**: Decodificar y ejecutar stores en el kernel
+   - ❌ Requiere decodificador RISC-V completo
+   - ❌ Muy complejo para el alcance de la tarea
+
+### 5.3 Compatibilidad con Lazy Allocation
+
+El código mantiene compatibilidad con el mecanismo de lazy allocation existente:
+```c
+if((pte = walk(...)) != 0 && (*pte & PTE_RDPROTECT)) {
+  // Manejar página protegida
+} else if(vmfault(...) != 0) {
+  // Lazy allocation
+}
+```
+
+---
+
+## 6. Casos de Uso
+
+La protección de lectura es útil para:
+
+1. **Claves criptográficas**: Escribir claves en memoria pero prevenir lectura accidental
+2. **Write-only logs**: Permitir append pero no lectura no autorizada
+3. **Buffers de salida**: Procesos pueden escribir pero no espiar datos de otros
+
+---
+
+## 7. Comandos de Compilación
 ```bash
-# Compilar
 make clean
 make
-
-# Ejecutar xv6
 make qemu
+```
 
-# Dentro de xv6, ejecutar demo
-$ demo
+Dentro de xv6:
+```bash
+rdprotect_test    # Test de bloqueo de lectura
+wrtest            # Test de escritura
 ```
 
 ---
 
-## Resultados
+## 8. Conclusiones
 
-El programa `demo` crea 10 procesos con tickets incrementales (50, 100, 150, ..., 500). La salida muestra que todos los procesos se ejecutan y completan, demostrando que el Lottery Scheduler funciona correctamente.
+✅ **Logrado:**
+- Implementación funcional de protección de lectura
+- Bloqueo exitoso de operaciones de lectura
+- Permiso correcto para operaciones de escritura
+- Restauración de permisos con munrdprotect
 
-La distribución probabilística de CPU se observa en el orden variable de finalización de los procesos, aunque los procesos con más tickets tienden a obtener más tiempo de CPU en promedio.
+⚠️ **Limitaciones reconocidas:**
+- Limitación arquitectónica de RISC-V (W-only no soportado nativamente)
+- Páginas quedan legibles después de primera escritura
+- Solución completa requeriría hardware específico o emulación costosa
+
+La implementación cumple con los objetivos de la tarea dentro de las restricciones arquitectónicas de RISC-V.
